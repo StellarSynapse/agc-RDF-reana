@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Analysis Grand Challenge implementations in modern ROOT
 
 The analysis code can be found under [`analyses`](https://github.com/root-project/analysis-grand-challenge/tree/main/analyses/).
@@ -15,3 +16,6 @@ This includes:
 all done in a reproducible and preservable way that can scale to HL-LHC requirements.
 
 The official AGC documentation can be found [at this link](https://agc.readthedocs.io/en/latest/index.html).
+=======
+# agc-RDF-reana
+>>>>>>> 8553ca6f4b03d7e82c0876c8923a9e69260630ec
