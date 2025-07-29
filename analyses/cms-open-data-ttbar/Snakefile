@@ -1,0 +1,64 @@
+import json
+
+# 1) Зчитуємо JSON зі структурою { process: { variation: {...}, … }, … }
+with open("nanoaod_inputs.json") as f:
+    data = json.load(f)
+
+# 2) Формуємо список дійсних комбінацій (sample, variation) без жодних пробілів
+PAIRS = []
+for sample, variations in data.items():
+    # Обрізаємо пробіли та видаляємо всі внутрішні пробіли
+    sample_clean = "".join(sample.split())
+    for variation in variations.keys():
+        variation_clean = "".join(variation.split())
+        PAIRS.append((sample_clean, variation_clean))
+
+# 3) Списки очікуваних файлів (тепер без пробілів у іменах)
+HISTOS = [f"results/histos_{s}_{v}.root" for s, v in PAIRS]
+LOGS   = [f"results/log_{s}_{v}.txt"      for s, v in PAIRS]
+
+rule all:
+    input:
+        *HISTOS,
+        *LOGS,
+        "results/correlation_matrix.png"
+
+rule analyze:
+    output:
+        histo="results/histos_{sample}_{variation}.root"
+    log:
+        "results/log_{sample}_{variation}.txt"
+    threads: 4
+    container:
+        "docker://stellarsynapse/agc-container-xrd"
+    shell:
+        """
+        mkdir -p results
+        echo "[DEBUG] analyze sample={wildcards.sample}, variation={wildcards.variation}"
+        python analysis.py \
+            --sample {wildcards.sample} \
+            --variation {wildcards.variation} \
+            --scheduler mt \
+            --ncores {threads} \
+            --output {output.histo} \
+            --no-fitting \
+            > {log} 2>&1
+        """
+
+rule correlation:
+    input:
+        HISTOS
+    output:
+        "results/correlation_matrix.png"
+    threads: 1
+    container:
+        "docker://stellarsynapse/agc-container-xrd"
+    params:
+        latency_wait=30
+    shell:
+        """
+        sleep {params.latency_wait}
+        python validate_histograms.py \
+            --input {input} \
+            --output {output}
+        """

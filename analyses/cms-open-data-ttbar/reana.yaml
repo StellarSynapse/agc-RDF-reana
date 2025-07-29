@@ -1,0 +1,29 @@
+version: 0.9.4
+
+inputs:
+  files:
+    - Snakefile
+    - analysis.py
+    - nanoaod_inputs.json
+    - ml.py
+    - utils.py
+    - plotting.py
+    - statistical.py
+    - validate_histograms.py
+    - ml_helpers.h
+    - helpers.h
+
+  directories:
+    - statistical_inference
+    - models
+    - reference
+
+workflow:
+  type: snakemake
+  file: Snakefile
+
+outputs:
+  files:
+    - results/*.root
+    - results/*.txt
+    - results/correlation_matrix.png
