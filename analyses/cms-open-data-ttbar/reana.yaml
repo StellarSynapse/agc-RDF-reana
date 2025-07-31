@@ -24,6 +24,6 @@ workflow:
 
 outputs:
   files:
-    - results/*.root
-    - results/*.txt
-    - results/correlation_matrix.png
+    - results/*.root  
+    - results/*.png    
+    - results/*inference.root  

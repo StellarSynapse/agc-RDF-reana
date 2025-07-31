@@ -1,27 +1,11 @@
-import json
 
-# 1) Зчитуємо JSON зі структурою { process: { variation: {...}, … }, … }
-with open("nanoaod_inputs.json") as f:
-    data = json.load(f)
-
-# 2) Формуємо список дійсних комбінацій (sample, variation) без жодних пробілів
-PAIRS = []
-for sample, variations in data.items():
-    # Обрізаємо пробіли та видаляємо всі внутрішні пробіли
-    sample_clean = "".join(sample.split())
-    for variation in variations.keys():
-        variation_clean = "".join(variation.split())
-        PAIRS.append((sample_clean, variation_clean))
-
-# 3) Списки очікуваних файлів (тепер без пробілів у іменах)
-HISTOS = [f"results/histos_{s}_{v}.root" for s, v in PAIRS]
-LOGS   = [f"results/log_{s}_{v}.txt"      for s, v in PAIRS]
+SAMPLES = ["ttbar", "single_top_s_chan", "single_top_t_chan", "single_top_tW", "wjets"]
+VARIATIONS = ["nominal"]
 
 rule all:
     input:
-        *HISTOS,
-        *LOGS,
-        "results/correlation_matrix.png"
+        expand("results/histos_{sample}_{variation}.root", sample=SAMPLES, variation=VARIATIONS),
+        expand("results/log_{sample}_{variation}.txt", sample=SAMPLES, variation=VARIATIONS)
 
 rule analyze:
     output:
@@ -34,31 +18,29 @@ rule analyze:
     shell:
         """
         mkdir -p results
-        echo "[DEBUG] analyze sample={wildcards.sample}, variation={wildcards.variation}"
         python analysis.py \
             --sample {wildcards.sample} \
             --variation {wildcards.variation} \
+            --no-fitting \
             --scheduler mt \
             --ncores {threads} \
             --output {output.histo} \
-            --no-fitting \
             > {log} 2>&1
         """
-
-rule correlation:
+rule merge_and_fit:
     input:
-        HISTOS
+        expand("results/histos_{sample}_{variation}.root", sample=SAMPLES, variation=VARIATIONS)
     output:
-        "results/correlation_matrix.png"
+        merged="results/histograms.root",
+        fitlog="results/fit.log"
     threads: 1
-    container:
-        "docker://stellarsynapse/agc-container-xrd"
-    params:
-        latency_wait=30
     shell:
         """
-        sleep {params.latency_wait}
-        python validate_histograms.py \
-            --input {input} \
-            --output {output}
+        # Злиття всіх per-sample файлів
+        hadd -f {output.merged} {input}
+        # Тепер запускаємо валідацію на повному файлі
+        python analysis.py \
+            --output {output.merged} \
+            --statistical-validation \
+            > {output.fitlog} 2>&1
         """

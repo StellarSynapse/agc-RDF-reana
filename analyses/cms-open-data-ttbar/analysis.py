@@ -103,7 +103,17 @@ def parse_args() -> argparse.Namespace:
         help="Do not run statistical validation part of the analysis.",
         action="store_true",
     )
-
+    #New arguments created by Dima:)
+    p.add_argument(
+        "--sample", 
+        required=True, 
+        help="Process to analyze, e.g. 'ttbar'"
+    )
+    p.add_argument(
+        "--variation", 
+        default="nominal", 
+        help="Systematic variation, e.g. 'nominal'"
+    )
     return p.parse_args()
 
 
@@ -192,6 +202,10 @@ def book_histos(
     """Return the pair of lists of RDataFrame results pertaining to the given process and variation.
     The first list contains histograms of reconstructed HT and trijet masses.
     The second contains ML inference outputs"""
+    #Corrections by Dima:
+    for branch in ["Electron_cutBased", "Electron_pt", "Muon_tightId", "Muon_pfRelIso04_all"]:
+        df = df.FilterAvailable(branch)
+    # --End--
     # Calculate normalization for MC
     x_sec = XSEC_INFO[process]
     lumi = 3378  # /pb
@@ -471,8 +485,16 @@ def main() -> None:
         return
 
     inputs: list[AGCInput] = retrieve_inputs(
-        args.n_max_files_per_sample, args.remote_data_prefix, args.data_cache
-    )
+    args.n_max_files_per_sample, args.remote_data_prefix, args.data_cache
+)
+
+# Samples and variations filtering
+    inputs = [i for i in inputs if i.process == args.sample and i.variation == args.variation]
+
+    if not inputs:
+        print(f"[INFO] No matching input found for sample '{args.sample}' and variation '{args.variation}'. Exiting.")
+        return
+
     results: list[AGCResult] = []
     ml_results: list[AGCResult] = []
 
