@@ -1,0 +1,28 @@
+version: 0.9.4
+
+inputs:
+  files:
+    - Snakefile
+    - analysis.py
+    - nanoaod_inputs.json
+    - utils.py
+    - plotting.py
+    - statistical.py
+    - validate_histograms.py
+    - ml_helpers.h
+    - helpers.h
+    - ml.py
+  directories:
+    - statistical_inference
+    - models
+    - reference
+
+workflow:
+  type: snakemake
+  file: Snakefile
+
+outputs:
+  files:
+    - output/histograms_ttbar_cmsopendata2015_ttbar_19980.root
+    - output/histograms_single_top_tW_cmsopendata2015_single_top_tW_19412.root
+    - output/histograms.root

@@ -1,0 +1,44 @@
+rule all:
+    input:
+        "output/histograms.root"  # фінальний об'єднаний ROOT-файл
+
+rule run_ttbar:
+    output:
+        "output/histograms_ttbar_cmsopendata2015_ttbar_19980_ttbar_cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample ttbar \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-pythia8/cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+rule run_single_top_tW:
+    output:
+        "output/histograms_single_top_tW_cmsopendata2015_single_top_tW_19412_single_top_tW_cmsopendata2015_single_top_tW_19412_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample single_top_tW \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/ST_tW_antitop_5f_inclusiveDecays_13TeV-powheg-pythia8_TuneCUETP8M1/cmsopendata2015_single_top_tW_19412_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+rule merge_results:
+    input:
+        "output/histograms_ttbar_cmsopendata2015_ttbar_19980_ttbar_cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root",
+        "output/histograms_single_top_tW_cmsopendata2015_single_top_tW_19412_single_top_tW_cmsopendata2015_single_top_tW_19412_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root"
+    output:
+        "output/histograms.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        "hadd -f {output} {input}"
+
+
