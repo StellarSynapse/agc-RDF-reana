@@ -1,10 +1,11 @@
 rule all:
     input:
-        "output/histograms.root"  # фінальний об'єднаний ROOT-файл
+        "output/fitted_histograms.root"
 
-rule run_ttbar:
+# ---- TTbar ----
+rule run_ttbar_1:
     output:
-        "output/histograms_ttbar_cmsopendata2015_ttbar_19980_ttbar_cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root"
+        "output/histograms_ttbar_19980.root"
     container:
         "stellarsynapse/agc-container-xrd-pandas"
     shell:
@@ -16,9 +17,94 @@ rule run_ttbar:
             --output {output}
         """
 
+rule run_ttbar_2:
+    output:
+        "output/histograms_ttbar_19983.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample ttbar \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-scaledown-pythia8/cmsopendata2015_ttbar_19983_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_10000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+rule run_ttbar_3:
+    output:
+        "output/histograms_ttbar_19985.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample ttbar \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-scaleup-pythia8/cmsopendata2015_ttbar_19985_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_10000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+rule run_ttbar_4:
+    output:
+        "output/histograms_ttbar_19978.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample ttbar \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-amcatnlo-pythia8/cmsopendata2015_ttbar_19978_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext1-v1_60000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+rule run_ttbar_5:
+    output:
+        "output/histograms_ttbar_19999.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample ttbar \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneEE5C_13TeV-powheg-herwigpp/cmsopendata2015_ttbar_19999_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_10000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+# ---- Single top ----
+rule run_single_top_s_chan:
+    output:
+        "output/histograms_single_top_s_chan.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample single_top_s_chan \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/ST_s-channel_4f_InclusiveDecays_13TeV-amcatnlo-pythia8/cmsopendata2015_single_top_s_chan_19394_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+rule run_single_top_t_chan:
+    output:
+        "output/histograms_single_top_t_chan.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample single_top_t_chan \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/ST_t-channel_top_4f_inclusiveDecays_13TeV-powhegV2-madspin-pythia8_TuneCUETP8M1/cmsopendata2015_single_top_t_chan_19408_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
 rule run_single_top_tW:
     output:
-        "output/histograms_single_top_tW_cmsopendata2015_single_top_tW_19412_single_top_tW_cmsopendata2015_single_top_tW_19412_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root"
+        "output/histograms_single_top_tW.root"
     container:
         "stellarsynapse/agc-container-xrd-pandas"
     shell:
@@ -30,15 +116,66 @@ rule run_single_top_tW:
             --output {output}
         """
 
+# ---- WJets ----
+rule run_wjets:
+    output:
+        "output/histograms_wjets.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample wjets \
+            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/WJetsToLNu_TuneCUETP8M1_13TeV-amcatnloFXFX-pythia8/cmsopendata2015_wjets_20547_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext2-v1_10000_0000.root \
+            --no-fitting \
+            --output {output}
+        """
+
+# ---- ZPrimeT ----
+rule run_zprimet:
+    output:
+        "output/histograms_zprimet.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py \
+            --sample zprimet \
+            --file-name root://eospublic.cern.ch//eos/opendata/cms/mc/RunIISummer20UL16NanoAODv9/ZprimeToTTJets_M5000_W50_TuneCP2_13TeV-madgraphMLM-pythia8/NANOAODSIM/106X_mcRun2_asymptotic_v17-v1/50000/56BA85F8-58BD-8E4F-9C2E-CF7AC2EB7388.root \
+            --no-fitting \
+            --output {output}
+        """
+
+# ---- Merge all ----
 rule merge_results:
     input:
-        "output/histograms_ttbar_cmsopendata2015_ttbar_19980_ttbar_cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root",
-        "output/histograms_single_top_tW_cmsopendata2015_single_top_tW_19412_single_top_tW_cmsopendata2015_single_top_tW_19412_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root"
+        expand("output/histograms_ttbar_{id}.root", id=["19980", "19983", "19985", "19978", "19999"]),
+        "output/histograms_single_top_s_chan.root",
+        "output/histograms_single_top_t_chan.root",
+        "output/histograms_single_top_tW.root",
+        "output/histograms_wjets.root",
+        "output/histograms_zprimet.root"
     output:
         "output/histograms.root"
     container:
         "stellarsynapse/agc-container-xrd-pandas"
     shell:
         "hadd -f {output} {input}"
+
+# ---- Fit final results ----
+rule fit_results:
+    input:
+        "output/histograms.root"
+    output:
+        "output/fitted_histograms.root"
+    container:
+        "stellarsynapse/agc-container-xrd-pandas"
+    shell:
+        """
+        python analysis.py --from-hist-file {input}
+        cp {input} {output}
+        """
+
+
 
 

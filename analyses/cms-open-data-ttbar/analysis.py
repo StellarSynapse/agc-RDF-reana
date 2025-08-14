@@ -9,7 +9,7 @@ import ROOT
 from distributed import Client, LocalCluster, SSHCluster, get_worker
 from plotting import save_ml_plots, save_plots
 from statistical import fit_histograms
-from utils import AGCInput, AGCResult, postprocess_results, retrieve_inputs, save_histos
+from utils import AGCInput, AGCResult, postprocess_results, retrieve_inputs, save_histos, load_histos_from_file
 import os, hashlib
 
 XSEC_INFO = {
@@ -100,6 +100,11 @@ def parse_args() -> argparse.Namespace:
         "--file-name",
         help="Specific file to process (e.g., file1.root or full URL).",
     )
+    p.add_argument(
+    "--from-hist-file",
+    help="Run plotting and fitting from an existing histograms ROOT file instead of reprocessing events."
+    )
+
     return p.parse_args()
 
 def create_dask_client(scheduler: str, ncores: int, hosts: str, scheduler_address: str) -> Client:
@@ -349,18 +354,29 @@ def run_distributed(
 
 def main() -> None:
     program_start = time()
-    args = parse_args()    
-
-# Гарантувати існування директорії
-    out_dir = os.path.dirname(args.output)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
+    args = parse_args()
 
     ROOT.TH1.AddDirectory(False)
     ROOT.gROOT.SetBatch(True)
 
     if args.verbose:
         ROOT.Detail.RDF.RDFLogChannel().SetVerbosity(ROOT.Experimental.ELogLevel.kInfo)
+
+    # --- Новий блок: робота з уже готовим ROOT-файлом ---
+    if getattr(args, "from_hist_file", None):
+        from utils import load_histos_from_file
+        print(f"Loading histograms from existing file: {args.from_hist_file}")
+        results = load_histos_from_file(args.from_hist_file)
+        save_plots(results)
+        if not args.no_fitting:
+            fit_histograms(filename=args.from_hist_file)
+        return
+    # -----------------------------------------------------
+
+    # Створити директорію для виходу, якщо потрібно
+    out_dir = os.path.dirname(args.output)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     if args.statistical_validation:
         fit_histograms(filename=args.output)
@@ -370,6 +386,7 @@ def main() -> None:
         logging.warning("--file-name overrides --n-max-files-per-sample")
         args.n_max_files_per_sample = None
 
+    # Отримати вхідні файли
     inputs: list[AGCInput] = retrieve_inputs(
         args.n_max_files_per_sample,
         args.remote_data_prefix,
@@ -386,6 +403,7 @@ def main() -> None:
     results: list[AGCResult] = []
     ml_results: list[AGCResult] = []
 
+    # Виконання
     if args.scheduler == "mt":
         run_mt(program_start, args, inputs, results, ml_results)
     else:
@@ -395,10 +413,9 @@ def main() -> None:
             raise ValueError("Scheduler address provided but scheduler is not 'dask-remote'")
         run_distributed(program_start, args, inputs, results, ml_results)
 
+    # Постобробка та збереження
     results = postprocess_results(results)
-    
     save_plots(results)
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
     save_histos([r.histo for r in results], output_fname=args.output)
     print(f"Result histograms saved in file {args.output}")
 
@@ -411,6 +428,9 @@ def main() -> None:
 
     if not args.no_fitting:
         fit_histograms(filename=args.output)
+
+
+
 
 if __name__ == "__main__":
     main()

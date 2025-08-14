@@ -207,3 +207,49 @@ def save_histos(results: list[ROOT.TH1D], output_fname: str):
             histogram_4j2b.Add(out_file.Get("4j2b_ttbar_PS_var"), 0.5)
             histogram_4j2b.Add(out_file.Get("4j2b_ttbar_ME_var"), 0.5)
             out_file.WriteObject(histogram_4j2b, "4j2b_pseudodata")
+
+def load_histos_from_file(fname: str) -> list[AGCResult]:
+    """Load histograms from ROOT file into AGCResult objects."""
+    f = ROOT.TFile.Open(fname)  # один аргумент; без контекст-менеджера
+    if not f or f.IsZombie():
+        raise RuntimeError(f"Could not open ROOT file: {fname}")
+
+    results = []
+    keys = f.GetListOfKeys()
+    for i in range(keys.GetEntries()):
+        key = keys.At(i)
+        obj = key.ReadObj()
+        if not obj.InheritsFrom("TH1"):
+            continue
+
+        # Від’єднати гісти від файлу, щоб вони жили після f.Close()
+        h = obj.Clone()
+        h.SetDirectory(0)
+
+        name = h.GetName()
+        parts = name.split("_")
+        if len(parts) >= 3:
+            region = parts[0]
+            process = parts[1]
+            variation = "_".join(parts[2:])
+        elif len(parts) == 2:
+            region, process = parts
+            variation = "nominal"
+        else:
+            # нетипове ім'я — пропускаємо
+            continue
+
+        results.append(
+            AGCResult(
+                histo=h,
+                region=region,
+                process=process,
+                variation=variation,
+                nominal_histo=h,  # тут не критично, save_plots це не використовує
+                should_vary=False,
+            )
+        )
+
+    f.Close()
+    return results
+
