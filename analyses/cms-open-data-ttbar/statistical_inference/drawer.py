@@ -647,6 +647,15 @@ class DrawModel:
             self.hs_stacks[-1].Draw("hist")
             self.hs_stacks[-1].GetXaxis().SetLabelSize(0.06)
 
+            legend = ROOT.TLegend(0.65, 0.7, 0.9, 0.9)
+            for i, hist in enumerate(sample_histograms):
+            # We take the name from sample.GetName() (for example, "ttbar", "wjets", "zprimet")
+                legend.AddEntry(hist, channel.GetSamples()[i].GetName(), "f")
+                legend.SetBorderSize(0)
+                legend.SetFillStyle(0)
+                legend.Draw()
+
+
             maximum_y_val = (
                 ROOT.gPad.GetUymax()
             )  # used for moving upper limit of Y ax

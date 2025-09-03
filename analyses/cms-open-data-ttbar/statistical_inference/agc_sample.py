@@ -209,6 +209,13 @@ class AGCSample():
         hist_nominal_directory = hist_nominal_file.GetDirectory(self.GetHistFactorySample().GetHistoPath())
         hist_nominal = hist_nominal_directory.Get(hist_nominal_name)
 
+        if not hist_nominal or hist_nominal.Integral() == 0:
+            print(f"Warning: skipping systematics {name} because nominal is empty")
+            return
+        if not hist_top or hist_top.Integral() == 0:
+            print(f"Warning: skipping systematics {name} because UP variation is empty")
+            return
+
         norm_factor_up = hist_top.Integral() / hist_nominal.Integral()
         h_new_up = hist_top.Clone(f"{channel_name}_{self.GetHistFactorySample().GetName()}_{name}_norm_plus_shape_up_clone")
         h_new_up.Scale(1 / norm_factor_up)
@@ -216,6 +223,10 @@ class AGCSample():
         file_down = ROOT.TFile(histofile_down, "READ")
         dir_down = file_down.GetDirectory(histopath_down)
         hist_down = dir_down.Get(histoname_down)
+
+        if not hist_down or hist_down.Integral() == 0:
+            print(f"Warning: skipping systematics {name} because DOWN variation is empty")
+            return
 
         norm_factor_down = hist_down.Integral() / hist_nominal.Integral()
         h_new_down = hist_down.Clone(f"{channel_name}_{self.GetHistFactorySample().GetName()}_{name}_norm_plus_shape_down_clone")
@@ -247,6 +258,9 @@ class AGCSample():
         overallSys.SetName(name)
         overallSys.SetLow(norm_factor_down)
         overallSys.SetHigh(norm_factor_up)
+
+        
+
 
         self.GetHistFactorySample().GetHistoSysList().push_back(histSys)
         self.GetHistFactorySample().GetOverallSysList().push_back(overallSys)

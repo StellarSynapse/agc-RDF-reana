@@ -178,38 +178,73 @@ def simplify_histo_name(name) -> str:
     return name
 
 
-def save_histos(results: list[ROOT.TH1D], output_fname: str):
-    with ROOT.TFile.Open(output_fname, "recreate") as out_file:
-        names_list = []
-        for result in results:
-            result.SetName(simplify_histo_name(result.GetName()))
-            out_file.WriteObject(result, result.GetName())
-            names_list.append(result.GetName())
+def save_histos(results: list[ROOT.TH1D], output_fname: str, metadata: dict | None = None):
+    """
+    Save histograms to a ROOT file and attach AGC_metadata (JSON) describing:
+      - histogram names
+      - integrals per histogram
+      - provided per-process metadata (if any)
+      - global LUMI
+    metadata: optional dict, e.g. { "ttbar": {"variation":"nominal","nevents":12345,"xsec":729.8}, ... }
+    """
+    f = ROOT.TFile.Open(output_fname, "recreate")
+    if not f or f.IsZombie():
+        raise RuntimeError(f"Could not open output ROOT file: {output_fname}")
+    names_list = []
+    integrals = {}
+    for result in results:
+        # keep previous name-simplification behavior
+        result.SetName(simplify_histo_name(result.GetName()))
+        # save object
+        f.WriteObject(result, result.GetName())
+        names_list.append(result.GetName())
+        try:
+            integrals[result.GetName()] = float(result.Integral())
+        except Exception:
+            integrals[result.GetName()] = None
 
-        if (
-            "4j1b_ttbar_ME_var" in names_list
-            and "4j1b_ttbar_PS_var" in names_list
-            and "4j1b_wjets" in names_list
-            and "4j2b_ttbar_ME_var" in names_list
-            and "4j2b_ttbar_PS_var" in names_list
-            and "4j2b_wjets" in names_list
-        ):
-            histogram_4j1b = out_file.Get("4j1b_wjets").Clone(
-                "4j1b_pseudodata"
-            )
-            histogram_4j1b.Add(out_file.Get("4j1b_ttbar_PS_var"), 0.5)
-            histogram_4j1b.Add(out_file.Get("4j1b_ttbar_ME_var"), 0.5)
-            out_file.WriteObject(histogram_4j1b, "4j1b_pseudodata")
+    # existing pseudodata creation (unchanged)
+    if (
+        "4j1b_ttbar_ME_var" in names_list
+        and "4j1b_ttbar_PS_var" in names_list
+        and "4j1b_wjets" in names_list
+        and "4j2b_ttbar_ME_var" in names_list
+        and "4j2b_ttbar_PS_var" in names_list
+        and "4j2b_wjets" in names_list
+    ):
+        histogram_4j1b = f.Get("4j1b_wjets").Clone("4j1b_pseudodata")
+        histogram_4j1b.Add(f.Get("4j1b_ttbar_PS_var"), 0.5)
+        histogram_4j1b.Add(f.Get("4j1b_ttbar_ME_var"), 0.5)
+        f.WriteObject(histogram_4j1b, "4j1b_pseudodata")
 
-            histogram_4j2b = out_file.Get("4j2b_wjets").Clone(
-                "4j2b_pseudodata"
-            )
-            histogram_4j2b.Add(out_file.Get("4j2b_ttbar_PS_var"), 0.5)
-            histogram_4j2b.Add(out_file.Get("4j2b_ttbar_ME_var"), 0.5)
-            out_file.WriteObject(histogram_4j2b, "4j2b_pseudodata")
+        histogram_4j2b = f.Get("4j2b_wjets").Clone("4j2b_pseudodata")
+        histogram_4j2b.Add(f.Get("4j2b_ttbar_PS_var"), 0.5)
+        histogram_4j2b.Add(f.Get("4j2b_ttbar_ME_var"), 0.5)
+        f.WriteObject(histogram_4j2b, "4j2b_pseudodata")
+
+    # Compose metadata dict and write as ROOT object for future read
+    meta_out = {
+        "histogram_names": names_list,
+        "integrals": integrals,
+        "lumi": LUMI,
+        "by_process": metadata or {},
+    }
+    # write JSON as TObjString (robust and easy to read back)
+    try:
+        meta_str = json.dumps(meta_out, indent=None)
+        meta_obj = ROOT.TObjString(meta_str)
+        f.WriteObject(meta_obj, "AGC_metadata")
+    except Exception as e:
+        # best-effort: don't fail the whole job for metadata write failure
+        print(f"WARNING: could not write AGC_metadata: {e}")
+
+    f.Close()
+
 
 def load_histos_from_file(fname: str) -> list[AGCResult]:
-    """Load histograms from ROOT file into AGCResult objects."""
+    """Load histograms from ROOT file into AGCResult objects.
+    Also attempt to load AGC_metadata if present (returned as attribute .metadata on results list).
+    """
     f = ROOT.TFile.Open(fname)  # один аргумент; без контекст-менеджера
     if not f or f.IsZombie():
         raise RuntimeError(f"Could not open ROOT file: {fname}")
@@ -245,11 +280,83 @@ def load_histos_from_file(fname: str) -> list[AGCResult]:
                 region=region,
                 process=process,
                 variation=variation,
-                nominal_histo=h,  # тут не критично, save_plots це не використовує
+                nominal_histo=h,
                 should_vary=False,
             )
         )
 
+    # Try to read metadata (if present)
+    metadata = None
+    try:
+        meta_obj = f.Get("AGC_metadata")
+        if meta_obj and hasattr(meta_obj, "GetString"):
+            try:
+                metadata = json.loads(str(meta_obj.GetString()))
+            except Exception:
+                metadata = None
+    except Exception:
+        metadata = None
+
     f.Close()
+
+    # Attach metadata to results as attribute for convenience (caller can use it)
+    # (we return a tuple-like structure only if metadata exists)
+    if metadata is not None:
+        # place metadata on returned list object (duck-typing)
+        try:
+            results.metadata = metadata  # type: ignore
+        except Exception:
+            # if cannot attach, ignore silently
+            pass
+
     return results
 
+# --- Compatibility helpers required by scale_results.py ---
+
+# Integrated luminosity (used for scaling). Keep in sync with analysis.py
+LUMI = 3378  # /pb
+
+def _normalize_name(s: str) -> str:
+    """Simple normalization used to match process names between JSON and callers."""
+    return "".join(ch for ch in str(s).lower() if ch.isalnum())
+
+def get_total_events(process: str) -> int:
+    """
+    Return total number of input events for a given process by summing 'nevts'
+    fields in nanoaod_inputs.json for that process (across variations).
+    Raises FileNotFoundError if nanoaod_inputs.json is missing.
+    """
+    json_path = Path("nanoaod_inputs.json")
+    if not json_path.exists():
+        raise FileNotFoundError("nanoaod_inputs.json not found (needed to compute total events)")
+
+    with open(json_path) as f:
+        data = json.load(f)
+
+    target = _normalize_name(process)
+    total = 0
+    found = False
+    for pname, pdata in data.items():
+        if _normalize_name(pname) != target:
+            continue
+        found = True
+        for variation, meta in pdata.items():
+            for fmeta in meta.get("files", []):
+                try:
+                    total += int(fmeta.get("nevts", 0) or 0)
+                except Exception:
+                    # be robust if nevts is missing or not an int
+                    pass
+
+    if not found:
+        # If nothing matched exactly, try a looser matching (e.g. cleaned tokens)
+        for pname, pdata in data.items():
+            if target in _normalize_name(pname):
+                for variation, meta in pdata.items():
+                    for fmeta in meta.get("files", []):
+                        try:
+                            total += int(fmeta.get("nevts", 0) or 0)
+                        except Exception:
+                            pass
+
+    return int(total)

@@ -12,14 +12,17 @@ from statistical import fit_histograms
 from utils import AGCInput, AGCResult, postprocess_results, retrieve_inputs, save_histos, load_histos_from_file
 import os, hashlib
 
+
 XSEC_INFO = {
     "ttbar": 396.87 + 332.97,
     "single_top_s_chan": 2.0268 + 1.2676,
     "single_top_t_chan": (36.993 + 22.175) / 0.252,
     "single_top_tW": 37.936 + 37.906,
     "wjets": 61457 * 0.252,
-    "zprimet": 380.09, #guess by DIMA
+    "zprimet": 700, #guess by DIMA
 }
+ALL_PROCESSES = {"ttbar", "single_top_s_chan", "single_top_t_chan", "single_top_tW", "wjets", "zprimet"}
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run AGC analysis, optionally on a single file")
@@ -103,6 +106,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
     "--from-hist-file",
     help="Run plotting and fitting from an existing histograms ROOT file instead of reprocessing events."
+    )
+    #GROK
+    p.add_argument(
+    "--total-nevents",
+    help="Override nevents with total for sample (for parallel mode).",
+    type=float,
+    default=None,
     )
 
     return p.parse_args()
@@ -266,6 +276,7 @@ def book_histos(
 
     return (results, ml_results)
 
+
 def load_cpp():
     try:
         localdir = get_worker().local_directory
@@ -367,9 +378,12 @@ def main() -> None:
         from utils import load_histos_from_file
         print(f"Loading histograms from existing file: {args.from_hist_file}")
         results = load_histos_from_file(args.from_hist_file)
+        out_for_write = args.output if args.output else args.from_hist_file
+        save_histos([r.histo for r in results], output_fname=out_for_write)
+        print(f"Rewrote ROOT with pseudodata check: {out_for_write}")
         save_plots(results)
         if not args.no_fitting:
-            fit_histograms(filename=args.from_hist_file)
+            fit_histograms(filename=out_for_write)
         return
     # -----------------------------------------------------
 
@@ -382,9 +396,10 @@ def main() -> None:
         fit_histograms(filename=args.output)
         return
 
-    if args.file_name and args.n_max_files_per_sample:
-        logging.warning("--file-name overrides --n-max-files-per-sample")
-        args.n_max_files_per_sample = None
+    #if args.file_name and args.n_max_files_per_sample:
+        #logging.warning("--file-name overrides --n-max-files-per-sample")
+        #args.n_max_files_per_sample = None
+        
 
     # Отримати вхідні файли
     inputs: list[AGCInput] = retrieve_inputs(
@@ -394,6 +409,17 @@ def main() -> None:
         sample=args.sample,
         file_name=args.file_name,
     )
+
+    #GROK
+    if args.total_nevents is not None:
+        for inp in inputs:
+            if inp.process in XSEC_INFO:  # Для MC семплів (ігнор data, якщо є)
+                inp.nevents = args.total_nevents
+            else:
+                print(f"WARNING: Skipping nevents override for non-MC process {inp.process}")
+
+
+
     if not inputs:
         raise RuntimeError("No input files selected for analysis")
 
@@ -413,11 +439,51 @@ def main() -> None:
             raise ValueError("Scheduler address provided but scheduler is not 'dask-remote'")
         run_distributed(program_start, args, inputs, results, ml_results)
 
-    # Постобробка та збереження
+    # Постобробка
     results = postprocess_results(results)
-    save_plots(results)
-    save_histos([r.histo for r in results], output_fname=args.output)
+
+    # Чи є повний набір процесів?
+    selected_processes = {i.process for i in inputs}
+    is_full_run = ALL_PROCESSES.issubset(selected_processes)
+
+    
+    if is_full_run:
+        save_plots(results)
+    else:
+        print("Partial run detected (not all processes). Skipping save_plots to keep runs fast.")
+
+    # --- DEBUG PRINTS before plotting ---
+    print("DEBUG: selected inputs processes:", selected_processes)
+    print("DEBUG: is_full_run =", is_full_run)
+    print("DEBUG: number of results =", len(results))
+
+    for i, r in enumerate(results):
+        try:
+            name = r.histo.GetName()
+            nbins = r.histo.GetNbinsX()
+            integral = r.histo.Integral()
+        except Exception as e:
+            name = f"<error getting histo name: {e}>"
+            nbins = None
+            integral = None
+        print(f"  [{i}] process={r.process} region={r.region} variation={r.variation} histname={name} nbins={nbins} integral={integral}")
+    print("END DEBUG\n")
+
+    
+
+    #save_histos([r.histo for r in results], output_fname=args.output)
+    # build per-process metadata from inputs (safe: inputs exists in main)
+    metadata = {}
+    for inp in inputs:
+        metadata[inp.process] = {
+            "variation": inp.variation,
+            "nevents": int(inp.nevents) if getattr(inp, "nevents", None) is not None else None,
+            "xsec": XSEC_INFO.get(inp.process),
+        }
+    save_histos([r.histo for r in results], output_fname=args.output, metadata=metadata)
+
     print(f"Result histograms saved in file {args.output}")
+
 
     if args.inference:
         ml_results = postprocess_results(ml_results)

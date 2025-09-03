@@ -12,17 +12,36 @@ inputs:
     - ml_helpers.h
     - helpers.h
     - ml.py
+    - merge_histos.py
+    - resolve_url.py
+    - scale_results.py
   directories:
     - statistical_inference
     - models
     - reference
 
+
 workflow:
   type: snakemake
   file: Snakefile
 
+
 outputs:
-  files:
-    - output/histograms_ttbar_cmsopendata2015_ttbar_19980.root
-    - output/histograms_single_top_tW_cmsopendata2015_single_top_tW_19412.root
-    - output/histograms.root
+  files:       
+    - output/histograms_merged.root
+    - output/fitted_histograms.root
+
+
+    #workflow:
+#  type: serial
+#  specification:
+#    steps:
+#      - name: run-analysis
+#        environment: stellarsynapse/agc-container-xrd
+#        commands:        
+         
+#          - python analysis.py --no-fitting 
+
+#outputs:
+#  files:
+#    - histograms.root 

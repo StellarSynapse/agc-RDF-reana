@@ -1,180 +1,242 @@
+import json, hashlib, unicodedata, re, sys, os
+from collections import defaultdict
+
+# --- settings ---
+N_FILES_MAX_PER_SAMPLE = -1   # -1 => no limit
+CONTAINER_IMAGE = "stellarsynapse/agc-container-xrd-pandas"
+
+# --- utilities ---
+def clean_token(x):
+    s = str(x)
+    s = unicodedata.normalize("NFKC", s)
+    s = s.strip()
+    s = "_".join(s.split())
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+    s = "".join(ch for ch in s if ch in allowed)
+    return s or "unk"
+
+def normalize_url(path):
+    p = str(path).strip()
+    if "://" in p:
+        proto, rest = p.split("://", 1)
+        rest = re.sub(r"/+", "/", rest)
+        return proto + "://" + rest
+    return re.sub(r"/+", "/", p)
+
+def fid_of_url(url):
+    return hashlib.md5(normalize_url(url).encode()).hexdigest()[:8]
+
+# --- read JSON and generate outputs (results/...) ---
+with open("nanoaod_inputs.json") as f:
+    samples_json = json.load(f)
+
+outputs = []
+seen = set()
+for sample, variations in samples_json.items():
+    sample_c = clean_token(sample)
+    for variation, meta in variations.items():
+        variation_c = clean_token(variation)
+        for fmeta in meta.get("files", []):
+            raw = fmeta.get("path") or fmeta.get("url") or fmeta.get("file")
+            if not raw:
+                continue
+            url = normalize_url(raw)
+            fid = hashlib.md5(url.encode()).hexdigest()[:8]
+            out = f"results/{sample_c}___{variation_c}___{fid}.root"
+            out = out.replace(" ", "")
+            if out not in seen:
+                seen.add(out)
+                outputs.append(out)
+
+if len(outputs) == 0:
+    raise SystemExit("No input files found in nanoaod_inputs.json (check 'files' lists).")
+
+# --- build map (clean_sample, clean_variation) -> list of outputs ---
+map_by_clean = defaultdict(list)
+for out in outputs:
+    base = os.path.basename(out)
+    parts = base.split("___")
+    if len(parts) < 3:
+        print("WARNING: skipping unexpected output name:", out, file=sys.stderr)
+        continue
+    sc = parts[0]
+    vc = parts[1]
+    map_by_clean[(sc, vc)].append(out)
+
+# debug: print counts (simple portable prints)
+for (sc, vc), lst in sorted(map_by_clean.items()):
+    print("DEBUG: mapped", len(lst), "files -> results/%s___%s___*.root" % (sc, vc), file=sys.stderr)
+
+# --- ITEMS: original (sample, condition) pairs from JSON; then cleaned ITEMS ---
+def get_raw_items(json_file):
+    items = []
+    with open(json_file, "r") as fd:
+        data = json.load(fd)
+        for sample, conditions in data.items():
+            for condition in conditions:
+                items.append((sample, condition))
+    return items
+
+RAW_ITEMS = get_raw_items("nanoaod_inputs.json")
+# Cleaned ITEMS so filenames match cleaned result names
+ITEMS = [(clean_token(sample), clean_token(condition)) for (sample, condition) in RAW_ITEMS]
+
+# EVERYTHING_MERGED_ROOTS will be created by merge_sample_condition
+EVERYTHING_MERGED_ROOTS = [f"everything_merged_{s}__{c}.root".replace(" ", "") for (s, c) in ITEMS]
+
+# debug:
+for s, c in ITEMS:
+    print("DEBUG: expect everything_merged_%s__%s.root" % (s, c), file=sys.stderr)
+
+# --- get_file_paths: used by merge_sample_condition ---
+def get_file_paths(wildcards):
+    
+    sc = clean_token(wildcards.sample)
+    vc = clean_token(wildcards.condition)
+    key = (sc, vc)
+    lst = map_by_clean.get(key, [])
+    if not lst:
+        available = ", ".join(f"{k[0]}__{k[1]}" for k in sorted(map_by_clean.keys()))
+        print(f"WARNING: no result files found for sample={wildcards.sample} (clean={sc}), condition={wildcards.condition} (clean={vc})", file=sys.stderr)
+        print("WARNING: available clean keys:", available, file=sys.stderr)
+    if N_FILES_MAX_PER_SAMPLE > 0:
+        return lst[:N_FILES_MAX_PER_SAMPLE]
+    return lst
+
+
+
+
 rule all:
     input:
+        "output/histograms_merged.root",
         "output/fitted_histograms.root"
 
-# ---- TTbar ----
-rule run_ttbar_1:
+
+# rule: run_analysis -> produces results/{sample}___{condition}___{file_id}.root
+# ensure results dir exists before running analysis.py
+rule run_analysis:
     output:
-        "output/histograms_ttbar_19980.root"
+        "results/{sample}___{condition}___{file_id}.root"
     container:
-        "stellarsynapse/agc-container-xrd-pandas"
+        CONTAINER_IMAGE
     shell:
-        """
-        python analysis.py \
-            --sample ttbar \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-pythia8/cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root \
-            --no-fitting \
-            --output {output}
+        r"""
+        echo "Resolving URL for cleaned sample={wildcards.sample}, condition={wildcards.condition}, fid={wildcards.file_id}" >&2
+        URL=$(python3 resolve_url.py "{wildcards.sample}" "{wildcards.condition}" "{wildcards.file_id}")
+        echo "Resolved URL: $URL" >&2
+        if [ -z "$URL" ]; then
+            echo "ERROR: could not resolve URL for {wildcards.sample} {wildcards.condition} {wildcards.file_id}" >&2
+            exit 1
+        fi
+        # ensure output dir exists
+        mkdir -p $(dirname {output})
+        # Compute total_nevents for sample/condition (use nevts_total if available, else sum nevts from files)
+        total_nevents=$(python3 -c '
+import json, sys
+with open("nanoaod_inputs.json") as f:
+    data = json.load(f)
+sample = "{wildcards.sample}"
+condition = "{wildcards.condition}"
+if sample not in data:
+    print("ERROR: Sample not found in JSON:", sample, file=sys.stderr)
+    sys.exit(1)
+if condition not in data[sample]:
+    print("ERROR: Condition not found for sample in JSON:", sample, condition, file=sys.stderr)
+    sys.exit(1)
+meta = data[sample][condition]
+nevts_total = meta.get("nevts_total", 0)
+files = meta.get("files", [])
+print("DEBUG: For", sample, condition, "- nevts_total=", nevts_total, "found", len(files), "files", file=sys.stderr)
+if len(files) > 0:
+    first_nevts = files[0].get("nevts", 0)
+    first_path = files[0].get("path", files[0].get("url", files[0].get("file", "unknown")))
+    print("DEBUG: First file nevts=", first_nevts, "path=", first_path, file=sys.stderr)
+total = nevts_total if nevts_total > 0 else sum(f.get("nevts", 0) for f in files)
+print(int(total))')
+        if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to compute total_nevents for {wildcards.sample}/{wildcards.condition}" >&2
+            exit 1
+        fi
+        echo "Total nevents for {wildcards.sample}/{wildcards.condition}: $total_nevents" >&2
+        if [ "$total_nevents" -eq 0 ]; then
+            echo "WARNING: total_nevents=0 for {wildcards.sample}/{wildcards.condition} — check JSON (nevts_total or nevts in files)" >&2
+        fi
+        python analysis.py --sample {wildcards.sample} --file-name "$URL" --no-fitting --output {output} --total-nevents $total_nevents
         """
 
-rule run_ttbar_2:
+# merge per sample/condition -> everything_merged_{sample}__{condition}.root
+rule merge_sample_condition:
+    input:
+        get_file_paths
     output:
-        "output/histograms_ttbar_19983.root"
+        "everything_merged_{sample}__{condition}.root"
     container:
-        "stellarsynapse/agc-container-xrd-pandas"
+        CONTAINER_IMAGE
     shell:
-        """
-        python analysis.py \
-            --sample ttbar \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-scaledown-pythia8/cmsopendata2015_ttbar_19983_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_10000_0000.root \
-            --no-fitting \
-            --output {output}
+        r"""
+        echo "Merging inputs for {wildcards.sample}__{wildcards.condition}: {input}" >&2
+        # Snakemake substitutes {input} as a space-separated list. If empty, it's an empty string.
+        if [ -z "{input}" ]; then
+            echo "ERROR: no input result files to merge for {wildcards.sample}__{wildcards.condition}" >&2
+            exit 1
+        fi
+        tmp="$(mktemp /tmp/hadd_XXXXXX.root)"
+        hadd -f "$tmp" {input} || ( echo "hadd failed for {wildcards.sample}__{wildcards.condition}" >&2; rm -f "$tmp"; exit 1 )
+        mv "$tmp" {output} || ( echo "mv failed for {output}" >&2; exit 1 )
         """
 
-rule run_ttbar_3:
-    output:
-        "output/histograms_ttbar_19985.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample ttbar \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-scaleup-pythia8/cmsopendata2015_ttbar_19985_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_10000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-rule run_ttbar_4:
-    output:
-        "output/histograms_ttbar_19978.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample ttbar \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-amcatnlo-pythia8/cmsopendata2015_ttbar_19978_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext1-v1_60000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-rule run_ttbar_5:
-    output:
-        "output/histograms_ttbar_19999.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample ttbar \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneEE5C_13TeV-powheg-herwigpp/cmsopendata2015_ttbar_19999_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_10000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-# ---- Single top ----
-rule run_single_top_s_chan:
-    output:
-        "output/histograms_single_top_s_chan.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample single_top_s_chan \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/ST_s-channel_4f_InclusiveDecays_13TeV-amcatnlo-pythia8/cmsopendata2015_single_top_s_chan_19394_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-rule run_single_top_t_chan:
-    output:
-        "output/histograms_single_top_t_chan.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample single_top_t_chan \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/ST_t-channel_top_4f_inclusiveDecays_13TeV-powhegV2-madspin-pythia8_TuneCUETP8M1/cmsopendata2015_single_top_t_chan_19408_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-rule run_single_top_tW:
-    output:
-        "output/histograms_single_top_tW.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample single_top_tW \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/ST_tW_antitop_5f_inclusiveDecays_13TeV-powheg-pythia8_TuneCUETP8M1/cmsopendata2015_single_top_tW_19412_PU25nsData2015v1_76X_mcRun2_asymptotic_v12-v1_00000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-# ---- WJets ----
-rule run_wjets:
-    output:
-        "output/histograms_wjets.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample wjets \
-            --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/WJetsToLNu_TuneCUETP8M1_13TeV-amcatnloFXFX-pythia8/cmsopendata2015_wjets_20547_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext2-v1_10000_0000.root \
-            --no-fitting \
-            --output {output}
-        """
-
-# ---- ZPrimeT ----
-rule run_zprimet:
-    output:
-        "output/histograms_zprimet.root"
-    container:
-        "stellarsynapse/agc-container-xrd-pandas"
-    shell:
-        """
-        python analysis.py \
-            --sample zprimet \
-            --file-name root://eospublic.cern.ch//eos/opendata/cms/mc/RunIISummer20UL16NanoAODv9/ZprimeToTTJets_M5000_W50_TuneCP2_13TeV-madgraphMLM-pythia8/NANOAODSIM/106X_mcRun2_asymptotic_v17-v1/50000/56BA85F8-58BD-8E4F-9C2E-CF7AC2EB7388.root \
-            --no-fitting \
-            --output {output}
-        """
-
-# ---- Merge all ----
+# final merge: create output dir, write to tmp first, then move
 rule merge_results:
     input:
-        expand("output/histograms_ttbar_{id}.root", id=["19980", "19983", "19985", "19978", "19999"]),
-        "output/histograms_single_top_s_chan.root",
-        "output/histograms_single_top_t_chan.root",
-        "output/histograms_single_top_tW.root",
-        "output/histograms_wjets.root",
-        "output/histograms_zprimet.root"
+        EVERYTHING_MERGED_ROOTS
     output:
-        "output/histograms.root"
+        "output/histograms_merged.root"
     container:
-        "stellarsynapse/agc-container-xrd-pandas"
+        CONTAINER_IMAGE
     shell:
-        "hadd -f {output} {input}"
+        r"""
+        echo "Final merging: inputs = {input}" >&2
+        # check inputs exist (print missing)
+        missing=0
+        for f in {input}; do
+            if [ ! -f "$f" ]; then
+                echo "MISSING input for final hadd: $f" >&2
+                missing=1
+            fi
+        done
+        if [ "$missing" -eq 1 ]; then
+            echo "ERROR: one or more inputs missing; aborting final merge" >&2
+            exit 1
+        fi
+        tmp="$(mktemp /tmp/hadd_final_XXXXXX.root)"
+        hadd -f "$tmp" {input} || ( echo "hadd failed" >&2; rm -f "$tmp"; exit 1 )
+        mkdir -p $(dirname {output})
+        mv "$tmp" {output} || ( echo "mv failed" >&2; exit 1 )
+        """
 
-# ---- Fit final results ----
+# optional fit step
 rule fit_results:
     input:
-        "output/histograms.root"
+        "output/histograms_merged.root"
     output:
         "output/fitted_histograms.root"
     container:
-        "stellarsynapse/agc-container-xrd-pandas"
+        CONTAINER_IMAGE
     shell:
-        """
-        python analysis.py --from-hist-file {input}
-        cp {input} {output}
-        """
+        "python analysis.py --from-hist-file {input} -o {output}"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

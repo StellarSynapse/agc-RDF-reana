@@ -84,6 +84,16 @@ def fit_histograms(filename=""):
     ttbar.AddNormFactor("ttbar_norm", 1, 0, 10)
     channel.AddSample(ttbar.GetHistFactorySample())
 
+    # --- Z' signal (nominal only, name matches JSON "zprimet") ---
+    zprimet = AGCSample("zprimet", "4j1b_zprimet", input_file)
+    zprimet.SetSystematicsInputFile(input_file)
+    zprimet.ActivateStatError()
+    zprimet.AddOverallSys(lumi_systematics)
+    # якщо пізніше з'являться shape-варіації — додамо їх через AddNormPlusShapeHistoSys, зараз лишаємо номінал
+    zprimet.AddNormFactor("Zprimet_norm", 1, 0, 10)
+    channel.AddSample(zprimet.GetHistFactorySample())
+
+
     wjets = AGCSample("wjets", "4j1b_wjets", input_file)
     wjets.SetSystematicsInputFile(input_file)
     wjets.ActivateStatError()
@@ -276,6 +286,15 @@ def fit_histograms(filename=""):
     ttbar.AddNormFactor("ttbar_norm", 1, 0, 10)
     channel_2b.AddSample(ttbar.GetHistFactorySample())
 
+    # --- Z' signal for 2b channel ---
+    zprimet_2b = AGCSample("zprimet", "4j2b_zprimet", input_file)
+    zprimet_2b.SetSystematicsInputFile(input_file)
+    zprimet_2b.ActivateStatError()
+    zprimet_2b.AddOverallSys(lumi_systematics)
+    zprimet_2b.AddNormFactor("Zprimet_norm", 1, 0, 10)
+    channel_2b.AddSample(zprimet_2b.GetHistFactorySample())
+
+
     wjets = AGCSample("wjets", "4j2b_wjets", input_file)
     wjets.SetSystematicsInputFile(input_file)
     wjets.ActivateStatError()
@@ -418,7 +437,7 @@ def fit_histograms(filename=""):
     channel_2b.AddSample(single_top_tW.GetHistFactorySample())
     meas.AddChannel(channel_2b)
 
-    meas.SetPOI("ttbar_norm")
+    meas.SetPOI("Zprimet_norm")
     meas.CollectHistograms()
 
     ws = ROOT.RooStats.HistFactory.MakeModelAndMeasurementFast(meas)
@@ -454,3 +473,5 @@ def fit_histograms(filename=""):
 
 
     result.Print()
+
+
