@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
     "--from-hist-file",
     help="Run plotting and fitting from an existing histograms ROOT file instead of reprocessing events."
     )
-    #GROK
+    
     p.add_argument(
     "--total-nevents",
     help="Override nevents with total for sample (for parallel mode).",
@@ -410,7 +410,7 @@ def main() -> None:
         file_name=args.file_name,
     )
 
-    #GROK
+    
     if args.total_nevents is not None:
         for inp in inputs:
             if inp.process in XSEC_INFO:  # Для MC семплів (ігнор data, якщо є)
