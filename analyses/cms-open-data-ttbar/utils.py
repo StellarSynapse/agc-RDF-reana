@@ -245,7 +245,7 @@ def load_histos_from_file(fname: str) -> list[AGCResult]:
     """Load histograms from ROOT file into AGCResult objects.
     Also attempt to load AGC_metadata if present (returned as attribute .metadata on results list).
     """
-    f = ROOT.TFile.Open(fname)  # один аргумент; без контекст-менеджера
+    f = ROOT.TFile.Open(fname)  
     if not f or f.IsZombie():
         raise RuntimeError(f"Could not open ROOT file: {fname}")
 
@@ -257,7 +257,7 @@ def load_histos_from_file(fname: str) -> list[AGCResult]:
         if not obj.InheritsFrom("TH1"):
             continue
 
-        # Від’єднати гісти від файлу, щоб вони жили після f.Close()
+        
         h = obj.Clone()
         h.SetDirectory(0)
 
@@ -271,7 +271,7 @@ def load_histos_from_file(fname: str) -> list[AGCResult]:
             region, process = parts
             variation = "nominal"
         else:
-            # нетипове ім'я — пропускаємо
+            
             continue
 
         results.append(
