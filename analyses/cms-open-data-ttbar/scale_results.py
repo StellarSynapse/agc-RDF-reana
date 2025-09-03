@@ -27,21 +27,21 @@ import re
 
 def parse_name(name: str):
     """
-    Розбирає назву гістограми на (process, variation).
-    Очікується формат типу:
+    Parses the histogram name to (process, variation).
+    Expected format type:
         4j1b_single_top_tW
         4j1b_single_top_tW_pt_scale_up
         4j2b_ttbar
         4j2b_wjets
-    Логіка:
-        - variation: остання частина (up/down/nominal), або 'nominal', якщо немає
-        - process: все, що перед variation
+    Logic:
+        - variation: last part (up/down/nominal), or 'nominal' if none
+        - process: everything before variation
     """
     parts = name.split("_")
     if len(parts) < 2:
         return None, None
 
-    # можливі варіації (systematics)
+    # possible variations (systematics)
     known_variations = [
         "up", "down",
         "nominal",
@@ -49,10 +49,10 @@ def parse_name(name: str):
         "btag", "btag_var",
     ]
 
-    # якщо остання частина виглядає як up/down → variation
+    # if the last part looks like up/down → variation
     if parts[-1] in ["up", "down"]:
         variation = parts[-1]
-        process = "_".join(parts[1:-1])  # пропускаємо категорію (наприклад, 4j1b)
+        process = "_".join(parts[1:-1])  # skip the category (for example, 4j1b)
     else:
         variation = "nominal"
         process = "_".join(parts[1:])
@@ -191,5 +191,6 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
 
 
