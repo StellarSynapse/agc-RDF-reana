@@ -84,12 +84,39 @@ def fit_histograms(filename=""):
     ttbar.AddNormFactor("ttbar_norm", 1, 0, 10)
     channel.AddSample(ttbar.GetHistFactorySample())
 
-    # --- Z' signal (nominal only, name matches JSON "zprimet") ---
+    # --- Z' signal  ---
     zprimet = AGCSample("zprimet", "4j1b_zprimet", input_file)
     zprimet.SetSystematicsInputFile(input_file)
+    zprimet.AddNormPlusShapeHistoSys(
+    "jet_energy_scale", histoname_up="4j1b_zprimet_pt_scale_up"
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "jet_energy_res", histoname_up="4j1b_zprimet_pt_res_up"
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_1",
+    histoname_up="4j1b_zprimet_btag_var_0_up",
+    histoname_down="4j1b_zprimet_btag_var_0_down",
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_2",
+    histoname_up="4j1b_zprimet_btag_var_1_up",
+    histoname_down="4j1b_zprimet_btag_var_1_down",
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_3",
+    histoname_up="4j1b_zprimet_btag_var_2_up",
+    histoname_down="4j1b_zprimet_btag_var_2_down",
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_4",
+    histoname_up="4j1b_zprimet_btag_var_3_up",
+    histoname_down="4j1b_zprimet_btag_var_3_down",
+    )
+
     zprimet.ActivateStatError()
     zprimet.AddOverallSys(lumi_systematics)
-    # if shape variations appear later, we will add them, for now we leave the nominal
+    
     zprimet.AddNormFactor("Zprimet_norm", 1, 0, 10)
     channel.AddSample(zprimet.GetHistFactorySample())
 
@@ -289,10 +316,38 @@ def fit_histograms(filename=""):
     # --- Z' signal for 2b channel ---
     zprimet_2b = AGCSample("zprimet", "4j2b_zprimet", input_file)
     zprimet_2b.SetSystematicsInputFile(input_file)
+    zprimet.AddNormPlusShapeHistoSys(
+    "jet_energy_scale", histoname_up="4j2b_zprimet_pt_scale_up"
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "jet_energy_res", histoname_up="4j2b_zprimet_pt_res_up"
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_1",
+    histoname_up="4j2b_zprimet_btag_var_0_up",
+    histoname_down="4j2b_zprimet_btag_var_0_down",
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_2",
+    histoname_up="4j2b_zprimet_btag_var_1_up",
+    histoname_down="4j2b_zprimet_btag_var_1_down",
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_3",
+    histoname_up="4j2b_zprimet_btag_var_2_up",
+    histoname_down="4j2b_zprimet_btag_var_2_down",
+    )
+    zprimet.AddNormPlusShapeHistoSys(
+    "b_tag_NP_4",
+    histoname_up="4j2b_zprimet_btag_var_3_up",
+    histoname_down="4j2b_zprimet_btag_var_3_down",
+    )
+
     zprimet_2b.ActivateStatError()
     zprimet_2b.AddOverallSys(lumi_systematics)
     zprimet_2b.AddNormFactor("Zprimet_norm", 1, 0, 10)
     channel_2b.AddSample(zprimet_2b.GetHistFactorySample())
+
 
 
     wjets = AGCSample("wjets", "4j2b_wjets", input_file)
@@ -473,5 +528,4 @@ def fit_histograms(filename=""):
 
 
     result.Print()
-
 
