@@ -214,7 +214,7 @@ rule merge_results:
         mv "$tmp" {output} || ( echo "mv failed" >&2; exit 1 )
         """
 
-# optional fit step
+# fit step
 rule fit_results:
     input:
         "output/histograms_merged.root"
@@ -224,6 +224,7 @@ rule fit_results:
         CONTAINER_IMAGE
     shell:
         "python analysis.py --from-hist-file {input} -o {output}"
+
 
 
 
