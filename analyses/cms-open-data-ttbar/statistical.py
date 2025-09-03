@@ -89,7 +89,7 @@ def fit_histograms(filename=""):
     zprimet.SetSystematicsInputFile(input_file)
     zprimet.ActivateStatError()
     zprimet.AddOverallSys(lumi_systematics)
-    # якщо пізніше з'являться shape-варіації — додамо їх через AddNormPlusShapeHistoSys, зараз лишаємо номінал
+    # if shape variations appear later, we will add them, for now we leave the nominal
     zprimet.AddNormFactor("Zprimet_norm", 1, 0, 10)
     channel.AddSample(zprimet.GetHistFactorySample())
 
