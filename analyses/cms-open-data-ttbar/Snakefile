@@ -113,7 +113,7 @@ rule all:
 
 
 # rule: run_analysis -> produces results/{sample}___{condition}___{file_id}.root
-# ensure results dir exists before running analysis.py
+
 rule run_analysis:
     output:
         "results/{sample}___{condition}___{file_id}.root"
@@ -224,6 +224,7 @@ rule fit_results:
         CONTAINER_IMAGE
     shell:
         "python analysis.py --from-hist-file {input} -o {output}"
+
 
 
 
